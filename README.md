@@ -17,4 +17,16 @@ discarded.
 
 Run this script as a user that can connect to the database (e.g. postgres).
 
+## Importing into Nextcloud
+
+For Nextcloud (v31) multiple contacts can be imported as a single file:
+`sudo -u postgres python davical-export.py` (the default configuration).
+Calendar entries, however, can only be imported as seperate files. In order to
+do this, this script has to be called with the `-s` (`--one-file-per-entry`)
+option: `sudo -u postgres python davical-export.py -s`. For Nextcloud,
+events/tasks don't need to be unwrapped and can stay wrapped in a `VCALENDAR`
+entry.
+
+## License
+
 This software is provided as-is and is licensed under the GPLv3 license.
