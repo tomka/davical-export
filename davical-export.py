@@ -29,6 +29,7 @@ parser = argparse.ArgumentParser(
                     epilog='Text at the bottom of help')
 parser.add_argument('--target-dir', default='/tmp/dav-export')
 parser.add_argument('--one-file-per-entry', '-s',  action='store_true', default=False)
+parser.add_argument('--unwrap-events', '-u',  action='store_true', default=False)
 args = parser.parse_args()
 
 print('Exporting DAV collections to directory "' + args.target_dir + '"\n')
@@ -55,29 +56,30 @@ for row in collection_data:
    elif data_type == 'vevent':
        calendars[collection_id].append(row)
    elif data_type == 'vtodo':
-       # Extract VEVENTs, VTODOs, and VJOURNALs from th enclosing VCALENDAR
-       filtered_data = []
-       valid_starts = ['begin:vevent', 'begin:vtodo', 'begin:vjournal']
-       valid_ends = ['end:vevent', 'end:vtodo', 'end:vjournal']
-       in_section = False
-       fixed = False
-       for line in data.split('\n'):
-            line = line.strip('\r')
-            test_line = line.lower()
-            if test_line in valid_starts:
-                in_section = True
-            elif not in_section:
-                fixed = True
-                continue
-            if test_line in valid_ends and in_section:
-                in_section = False
-            filtered_data.append(line)
-       if fixed:
-           n_fixed_events += 1
+       if args.unwrap_events:
+           # Extract VEVENTs, VTODOs, and VJOURNALs from th enclosing VCALENDAR
+           filtered_data = []
+           valid_starts = ['begin:vevent', 'begin:vtodo', 'begin:vjournal']
+           valid_ends = ['end:vevent', 'end:vtodo', 'end:vjournal']
+           in_section = False
+           fixed = False
+           for line in data.split('\n'):
+                line = line.strip('\r')
+                test_line = line.lower()
+                if test_line in valid_starts:
+                    in_section = True
+                elif not in_section:
+                    fixed = True
+                    continue
+                if test_line in valid_ends and in_section:
+                    in_section = False
+                filtered_data.append(line)
+           if fixed:
+               n_fixed_events += 1
 
-       if not filtered_data:
-           raise Exception("No valid event data found: " + str(row))
-       row['caldav_data'] = '\n'.join(filtered_data)
+           if not filtered_data:
+               raise Exception("No valid event data found: " + str(row))
+           row['caldav_data'] = '\n'.join(filtered_data)
        events[collection_id].append(row)
    else:
        raise Exception('Unknown data type: ' + data_type)
