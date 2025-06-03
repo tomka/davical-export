@@ -28,6 +28,7 @@ parser = argparse.ArgumentParser(
                         'user running the script (usually postgres).',
                     epilog='Text at the bottom of help')
 parser.add_argument('--target-dir', default='/tmp/dav-export')
+parser.add_argument('--one-file-per-entry', '-s',  action='store_true', default=False)
 args = parser.parse_args()
 
 print('Exporting DAV collections to directory "' + args.target_dir + '"\n')
@@ -50,9 +51,9 @@ for row in collection_data:
    data_type = row["caldav_type"].lower()
    data = row["caldav_data"]
    if data_type == 'vcard':
-       addresses[collection_id].append(data)
+       addresses[collection_id].append(row)
    elif data_type == 'vevent':
-       calendars[collection_id].append(data)
+       calendars[collection_id].append(row)
    elif data_type == 'vtodo':
        # Extract VEVENTs, VTODOs, and VJOURNALs from th enclosing VCALENDAR
        filtered_data = []
@@ -76,7 +77,8 @@ for row in collection_data:
 
        if not filtered_data:
            raise Exception("No valid event data found: " + str(row))
-       events[collection_id].append('\n'.join(filtered_data))
+       row['caldav_data'] = '\n'.join(filtered_data)
+       events[collection_id].append(row)
    else:
        raise Exception('Unknown data type: ' + data_type)
 
@@ -93,25 +95,40 @@ print('')
 if not os.path.exists(args.target_dir):
     os.makedirs(args.target_dir)
 
+def write_collection_files(entries, extension='ics'):
+    n_entries = 0
+    for collection_id, collection_entries in entries.items():
+        collection_filename = collection_id + '.' + extension
+        with codecs.open(os.path.join(args.target_dir, collection_filename), 'w', 'utf-8') as collection_file:
+            collection_file.write(''.join(map(lambda x: x['caldav_data'], collection_entries)))
+            n_entries += len(collection_entries)
+    return n_entries
+
+def write_collection_item_files(entries, data_type, extension='ics'):
+    n_entries = 0
+    for collection_id, collection_entries in entries.items():
+        target_dir = os.path.join(args.target_dir, collection_id + '-' + data_type)
+        if not os.path.exists(target_dir):
+            os.makedirs(target_dir)
+        for entry in collection_entries:
+            item_filename = collection_id + '-' + entry['filename']
+            if not item_filename.endswith(extension):
+                item_filename += '.' + extension
+            item_path = os.path.join(target_dir, item_filename)
+            with codecs.open(item_path, 'w', 'utf-8') as item_file:
+                item_file.write(entry['caldav_data'])
+                n_entries += 1
+    return n_entries
+
 # Export into collection files
-n_calendars = 0
-for collection_id, calendar_entries in calendars.items():
-    ics_filename = collection_id + '.ics'
-    with codecs.open(os.path.join(args.target_dir, ics_filename), 'w', 'utf-8') as ics_file:
-        ics_file.write(''.join(calendar_entries))
-        n_calendars += len(calendar_entries)
-n_addresses = 0
-for collection_id, address_entries in addresses.items():
-    vcf_filename = collection_id + '.vcf'
-    with codecs.open(os.path.join(args.target_dir, vcf_filename), 'w', 'utf-8') as vcf_file:
-        vcf_file.write(''.join(address_entries))
-        n_addresses += len(address_entries)
-n_events = 0
-for collection_id, event_entries in events.items():
-    ics_filename = collection_id + '-events.ics'
-    with codecs.open(os.path.join(args.target_dir, ics_filename), 'w', 'utf-8') as ics_file:
-        ics_file.write(''.join(event_entries))
-        n_events += len(event_entries)
+if args.one_file_per_entry:
+    n_calendars = write_collection_item_files(calendars, 'calendar', 'ics')
+    n_addresses = write_collection_item_files(addresses, 'addresses', 'vcf')
+    n_events = write_collection_item_files(events, 'events', 'ics')
+else:
+    n_calendars = write_collection_files(calendars, 'ics')
+    n_addresses = write_collection_files(addresses, 'vcf')
+    n_events = write_collection_files(events, 'ics')
 
 n_exported_collections = n_calendars + n_addresses + n_events
 print('Finished - exported ' + str(n_exported_collections) +
